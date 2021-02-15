@@ -25,6 +25,7 @@
     <jersey.version>2.32</jersey.version>
     <jicoco.version>1.1-71-g993ac08</jicoco.version>
     <jitsi.utils.version>1.0-68-g41ff78f</jitsi.utils.version>
+    <jitsi.xmpp.extensions.version>1.0.1-SNAPSHOT</jitsi.xmpp.extensions.version>
   </properties>
 
   <dependencies>
@@ -123,7 +124,7 @@
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>jitsi-xmpp-extensions</artifactId>
-      <version>1.0-18-gee3ce37</version>
+      <version>${jitsi.xmpp.extensions.version}</version>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
@@ -435,6 +436,13 @@
     <repository>
       <id>jitpack.io</id>
       <url>https://jitpack.io</url>
+    </repository>
+    <repository>
+        <id>github</id>
+        <url>https://maven.pkg.github.com/nordeck/jitsi-xmpp-extensions</url>
+        <snapshots>
+            <enabled>false</enabled>
+        </snapshots>
     </repository>
   </repositories>
 </project>

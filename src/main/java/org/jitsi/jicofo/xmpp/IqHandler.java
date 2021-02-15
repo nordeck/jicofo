@@ -20,6 +20,7 @@ package org.jitsi.jicofo.xmpp;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
 import org.jitsi.jicofo.bridge.Bridge;
+import org.jitsi.utils.MediaType;
 import org.jitsi.xmpp.extensions.rayo.*;
 import net.java.sip.communicator.service.protocol.*;
 
@@ -58,6 +59,7 @@ public class IqHandler
     private XmppConnection connection;
 
     private final MuteIqHandler muteIqHandler = new MuteIqHandler();
+    private final MuteVideoIqHandler muteVideoIqHandler = new MuteVideoIqHandler();
     private final DialIqHandler dialIqHandler = new DialIqHandler();
     @NotNull
     private final ConferenceIqHandler conferenceIqHandler;
@@ -89,6 +91,7 @@ public class IqHandler
 
         logger.info("Registering IQ handlers with XmppConnection.");
         connection.registerIQRequestHandler(muteIqHandler);
+        connection.registerIQRequestHandler(muteVideoIqHandler);
         connection.registerIQRequestHandler(dialIqHandler);
         connection.registerIQRequestHandler(conferenceIqHandler);
         if (authenticationIqHandler != null)
@@ -113,6 +116,24 @@ public class IqHandler
         public IQ handleIQRequest(IQ iqRequest)
         {
             return handleMuteIq((MuteIq) iqRequest);
+        }
+    }
+
+    private class MuteVideoIqHandler extends AbstractIqRequestHandler
+    {
+        MuteVideoIqHandler()
+        {
+            super(
+                MuteVideoIq.ELEMENT_NAME,
+                MuteVideoIq.NAMESPACE,
+                IQ.Type.set,
+                Mode.sync);
+        }
+
+        @Override
+        public IQ handleIQRequest(IQ iqRequest)
+        {
+            return handleMuteVideoIq((MuteVideoIq) iqRequest);
         }
     }
 
@@ -144,6 +165,7 @@ public class IqHandler
         if (connection != null)
         {
             connection.unregisterIQRequestHandler(muteIqHandler);
+            connection.unregisterIQRequestHandler(muteVideoIqHandler);
             connection.unregisterIQRequestHandler(dialIqHandler);
             connection = null;
         }
@@ -179,7 +201,7 @@ public class IqHandler
 
         IQ result;
 
-        if (conference.handleMuteRequest(muteIq.getFrom(), jid, doMute))
+        if (conference.handleMuteRequest(muteIq.getFrom(), jid, doMute, MediaType.AUDIO))
         {
             result = IQ.createResultIQ(muteIq);
 
@@ -198,6 +220,51 @@ public class IqHandler
         else
         {
             result = IQ.createErrorResponse(muteIq, XMPPError.getBuilder(XMPPError.Condition.internal_server_error));
+        }
+
+        return result;
+    }
+
+    private IQ handleMuteVideoIq(MuteVideoIq muteVideoIq)
+    {
+        Boolean doMute = muteVideoIq.getMute();
+        Jid jid = muteVideoIq.getJid();
+
+        if (doMute == null || jid == null)
+        {
+            return IQ.createErrorResponse(muteVideoIq, XMPPError.getBuilder(XMPPError.Condition.item_not_found));
+        }
+
+        Jid from = muteVideoIq.getFrom();
+        JitsiMeetConferenceImpl conference = getConferenceForMucJid(from);
+        if (conference == null)
+        {
+            logger.debug("Mute error: room not found for JID: " + from);
+            return IQ.createErrorResponse(muteVideoIq, XMPPError.getBuilder(XMPPError.Condition.item_not_found));
+        }
+
+        IQ result;
+
+        if (conference.handleMuteRequest(muteVideoIq.getFrom(), jid, doMute, MediaType.VIDEO))
+        {
+            result = IQ.createResultIQ(muteVideoIq);
+
+            if (!muteVideoIq.getFrom().equals(jid))
+            {
+                MuteIq muteStatusUpdate = new MuteIq();
+                muteStatusUpdate.setActor(from);
+                muteStatusUpdate.setType(IQ.Type.set);
+                muteStatusUpdate.setTo(jid);
+
+                muteStatusUpdate.setMute(doMute);
+
+                connection.sendStanza(muteStatusUpdate);
+            }
+        }
+        else
+        {
+            result = IQ.createErrorResponse(
+                muteVideoIq, XMPPError.getBuilder(XMPPError.Condition.internal_server_error));
         }
 
         return result;

@@ -18,12 +18,12 @@
 package org.jitsi.impl.protocol.xmpp.colibri;
 
 import net.java.sip.communicator.service.protocol.*;
-import org.jitsi.jicofo.*;
 import org.jitsi.protocol.xmpp.*;
 import org.jitsi.protocol.xmpp.colibri.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
 import org.jitsi.protocol.xmpp.util.*;
 import org.jitsi.service.neomedia.*;
+import org.jitsi.utils.MediaType;
 import org.jitsi.utils.logging.*;
 import org.jitsi.utils.stats.*;
 import org.jitsi.xmpp.extensions.colibri.*;
@@ -32,7 +32,6 @@ import org.jitsi.xmpp.util.*;
 import org.jivesoftware.smack.packet.*;
 import org.json.simple.*;
 import org.jxmpp.jid.*;
-import org.jxmpp.jid.parts.*;
 
 import java.time.*;
 import java.util.*;
@@ -669,8 +668,7 @@ public class ColibriConferenceImpl
      * {@inheritDoc}
      */
     @Override
-    public boolean muteParticipant(ColibriConferenceIQ channelsInfo,
-                                   boolean mute)
+    public boolean muteParticipant(ColibriConferenceIQ channelsInfo, boolean mute, MediaType mediaType)
     {
         if (checkIfDisposed("muteParticipant"))
         {
@@ -681,20 +679,17 @@ public class ColibriConferenceImpl
         request.setID(conferenceState.getID());
         request.setName(conferenceState.getName());
 
-        ColibriConferenceIQ.Content audioContent
-            = channelsInfo.getContent("audio");
+        ColibriConferenceIQ.Content content = channelsInfo.getContent(mediaType.toString());
 
-        if (audioContent == null || isBlank(request.getID()))
+        if (content == null || isBlank(request.getID()))
         {
-            logger.error("Failed to mute - no audio content." +
+            logger.error("Failed to mute - no " + mediaType.toString() + " content." +
                              " Conf ID: " + request.getID());
             return false;
         }
 
-        ColibriConferenceIQ.Content requestContent
-            = new ColibriConferenceIQ.Content(audioContent.getName());
-
-        for (ColibriConferenceIQ.Channel channel : audioContent.getChannels())
+        ColibriConferenceIQ.Content requestContent = new ColibriConferenceIQ.Content(content.getName());
+        for (ColibriConferenceIQ.Channel channel : content.getChannels())
         {
             ColibriConferenceIQ.Channel requestChannel
                 = new ColibriConferenceIQ.Channel();
