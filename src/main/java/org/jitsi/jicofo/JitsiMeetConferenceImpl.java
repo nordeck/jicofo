@@ -2289,7 +2289,11 @@ public class JitsiMeetConferenceImpl
 
         if (succeeded)
         {
-            participant.setMuted(doMute);
+            if (mediaType === MediaType.AUDIO) {
+                participant.setMuted(doMute);
+            } else if (mediaType === MediaType.VIDEO) {
+                participant.setVideoMuted(doMute);
+            }
         }
 
         return succeeded;
