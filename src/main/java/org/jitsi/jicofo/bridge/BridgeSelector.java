@@ -267,7 +267,7 @@ public class BridgeSelector
     {
         logger.debug("Propagating new bridge added event: " + bridge.getJid());
 
-        eventEmitter.fireEventAsync(handler ->
+        eventEmitter.fireEvent(handler ->
         {
             handler.bridgeAdded(bridge);
             return Unit.INSTANCE;
@@ -278,16 +278,16 @@ public class BridgeSelector
     {
         logger.debug("Propagating bridge went down event: " + bridge.getJid());
 
-        eventEmitter.fireEventAsync(handler ->
+        eventEmitter.fireEvent(handler ->
         {
             handler.bridgeRemoved(bridge);
             return Unit.INSTANCE;
         });
     }
 
-    public void stop()
+    public void shutdown()
     {
-        jvbDoctor.stop();
+        jvbDoctor.shutdown();
     }
 
     /**

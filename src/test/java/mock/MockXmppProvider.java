@@ -22,9 +22,9 @@ import mock.xmpp.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.jicofo.discovery.*;
-import org.jitsi.jicofo.jibri.*;
 import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.protocol.xmpp.*;
+import org.jivesoftware.smackx.disco.packet.*;
 import org.json.simple.*;
 import org.jxmpp.jid.*;
 import org.jxmpp.jid.impl.*;
@@ -81,7 +81,7 @@ public class MockXmppProvider
     }
 
     @Override
-    public void stop()
+    public void shutdown()
     {
         if (jingleOpSet != null)
         {
@@ -92,6 +92,7 @@ public class MockXmppProvider
     }
 
     @Override
+    @NotNull
     public XmppConnectionConfig getConfig()
     {
         return config;
@@ -99,12 +100,14 @@ public class MockXmppProvider
 
 
     @Override
+    @NotNull
     public MockXmppConnection getXmppConnection()
     {
         return connection;
     }
 
     @Override
+    @NotNull
     public OperationSetJingle getJingleApi()
     {
         return jingleOpSet;
@@ -144,16 +147,11 @@ public class MockXmppProvider
         return features;
     }
 
+    @Nullable
     @Override
-    public void addJibriIqHandler(@NotNull JibriSessionIqHandler jibriIqHandler)
+    public DiscoverInfo discoverInfo(@NotNull Jid jid)
     {
-        throw new RuntimeException("Not implemented.");
-    }
-
-    @Override
-    public void removeJibriIqHandler(@NotNull JibriSessionIqHandler jibriIqHandler)
-    {
-        throw new RuntimeException("Not implemented.");
+        return null;
     }
 
     @NotNull

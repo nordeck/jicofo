@@ -21,11 +21,11 @@ import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.jicofo.codec.*;
 import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
+import org.jitsi.utils.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 import org.jitsi.xmpp.extensions.jingle.JingleUtils;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
-import org.jitsi.jicofo.discovery.*;
 import org.jitsi.protocol.xmpp.*;
 import org.jitsi.protocol.xmpp.util.*;
 import org.jitsi.utils.logging2.*;
@@ -165,6 +165,17 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
                     participant.getRtpDescriptionMap(),
                     participant.getSourcesCopy(),
                     participant.getSourceGroupsCopy());
+        }
+
+        // if participant is not av moderated but we need to let's do it
+        if (meetConference.getChatRoom().isAvModerationEnabled(MediaType.AUDIO))
+        {
+            meetConference.muteParticipant(participant, MediaType.AUDIO);
+        }
+
+        if (meetConference.getChatRoom().isAvModerationEnabled(MediaType.VIDEO))
+        {
+            meetConference.muteParticipant(participant, MediaType.VIDEO);
         }
     }
 
@@ -371,7 +382,7 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
 
                         // FIXME: not all parameters are used currently
                         ssrcCopy.addParameter(
-                                new ParameterPacketExtension("cname","mixed"));
+                                new ParameterPacketExtension("cname", "mixed"));
                         ssrcCopy.addParameter(
                                 new ParameterPacketExtension(
                                         "label",
@@ -419,7 +430,7 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
                 List<SourceGroup> sourceGroups
                     = conferenceSSRCGroups.getSourceGroupsForMedia(contentName);
 
-                for(SourceGroup sourceGroup : sourceGroups)
+                for (SourceGroup sourceGroup : sourceGroups)
                 {
                     rtpDescPe.addChildExtension(sourceGroup.getPacketExtension());
                 }

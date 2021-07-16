@@ -30,14 +30,21 @@ import org.jitsi.xmpp.extensions.jingle.JingleIQ
 import org.jitsi.xmpp.extensions.jingle.JingleIQProvider
 import org.jitsi.xmpp.extensions.jitsimeet.BridgeSessionPacketExtension
 import org.jitsi.xmpp.extensions.jitsimeet.ConferenceIqProvider
+import org.jitsi.xmpp.extensions.jitsimeet.FeatureExtension
+import org.jitsi.xmpp.extensions.jitsimeet.FeaturesExtension
 import org.jitsi.xmpp.extensions.jitsimeet.IceStatePacketExtension
+import org.jitsi.xmpp.extensions.jitsimeet.JsonMessageExtension
 import org.jitsi.xmpp.extensions.jitsimeet.LoginUrlIqProvider
 import org.jitsi.xmpp.extensions.jitsimeet.LogoutIqProvider
+import org.jitsi.xmpp.extensions.jitsimeet.MuteIqProvider
+import org.jitsi.xmpp.extensions.jitsimeet.MuteVideoIqProvider
 import org.jitsi.xmpp.extensions.jitsimeet.RegionPacketExtension
+import org.jitsi.xmpp.extensions.jitsimeet.StartMutedProvider
 import org.jitsi.xmpp.extensions.jitsimeet.StatsId
 import org.jitsi.xmpp.extensions.jitsimeet.TranscriptionRequestExtension
 import org.jitsi.xmpp.extensions.jitsimeet.TranscriptionStatusExtension
 import org.jitsi.xmpp.extensions.jitsimeet.UserInfoPacketExt
+import org.jitsi.xmpp.extensions.rayo.RayoIqProvider
 import org.jivesoftware.smack.SmackConfiguration
 import org.jivesoftware.smack.parsing.ExceptionLoggingCallback
 import org.jivesoftware.smack.provider.ProviderManager
@@ -119,4 +126,23 @@ fun registerXmppExtensions() {
         JingleIQ.NAMESPACE,
         JingleIQProvider()
     )
+    ProviderManager.addExtensionProvider(
+        JsonMessageExtension.ELEMENT_NAME,
+        JsonMessageExtension.NAMESPACE,
+        DefaultPacketExtensionProvider(JsonMessageExtension::class.java)
+    )
+    ProviderManager.addExtensionProvider(
+        FeaturesExtension.ELEMENT_NAME,
+        FeaturesExtension.NAMESPACE,
+        DefaultPacketExtensionProvider(FeaturesExtension::class.java)
+    )
+    ProviderManager.addExtensionProvider(
+        FeatureExtension.ELEMENT_NAME,
+        FeatureExtension.NAMESPACE,
+        DefaultPacketExtensionProvider(FeatureExtension::class.java)
+    )
+    RayoIqProvider().registerRayoIQs()
+    MuteIqProvider.registerMuteIqProvider()
+    MuteVideoIqProvider.registerMuteVideoIqProvider()
+    StartMutedProvider.registerStartMutedProvider()
 }

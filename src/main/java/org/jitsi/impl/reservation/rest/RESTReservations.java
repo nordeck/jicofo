@@ -36,7 +36,7 @@ import java.util.function.*;
  * @author Pawel Domas
  */
 public class RESTReservations
-    implements ReservationSystem, FocusManager.FocusAllocationListener
+    implements ReservationSystem, ConferenceStore.Listener
 {
     /**
      * The logger.
@@ -93,7 +93,7 @@ public class RESTReservations
     /**
      * Stops this instance and all threads created by it.
      */
-    public void stop()
+    public void shutdown()
     {
         if (confDurationGuard != null)
         {
@@ -278,7 +278,7 @@ public class RESTReservations
      * {@inheritDoc}
      */
     @Override
-    synchronized public void onFocusDestroyed(EntityBareJid roomName)
+    synchronized public void conferenceEnded(EntityBareJid roomName)
     {
         // Focus destroyed
         Conference conference = conferenceMap.get(roomName);

@@ -18,10 +18,10 @@
 package org.jitsi.impl.protocol.xmpp;
 
 import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.NotNull;
 import org.jitsi.impl.protocol.xmpp.log.*;
 import org.jitsi.jicofo.*;
 import org.jitsi.jicofo.discovery.*;
-import org.jitsi.jicofo.jibri.*;
 import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.protocol.xmpp.*;
 import org.jitsi.retry.*;
@@ -33,8 +33,10 @@ import org.jivesoftware.smack.sasl.javax.*;
 import org.jivesoftware.smack.tcp.*;
 import org.jivesoftware.smackx.caps.*;
 import org.jivesoftware.smackx.disco.*;
+import org.jivesoftware.smackx.disco.packet.*;
 import org.json.simple.*;
 import org.jxmpp.jid.*;
+import org.jxmpp.jid.impl.*;
 import org.jxmpp.jid.parts.*;
 
 import java.lang.*;
@@ -61,7 +63,6 @@ public class XmppProviderImpl
      * Jingle operation set.
      */
     private final OperationSetJingleImpl jingleOpSet;
-    private final JibriIqHandler jibriIqHandler;
 
     private final Muc muc = new Muc();
 
@@ -107,8 +108,6 @@ public class XmppProviderImpl
 
         connection = createXmppConnection();
         connectRetry = new RetryStrategy(TaskPools.getScheduledPool());
-        jibriIqHandler = new JibriIqHandler();
-        connection.registerIQRequestHandler(jibriIqHandler);
     }
 
 
@@ -245,7 +244,7 @@ public class XmppProviderImpl
      * {@inheritDoc}
      */
     @Override
-    public void stop()
+    public void shutdown()
     {
         if (!started.compareAndSet(true, false))
         {
@@ -261,7 +260,6 @@ public class XmppProviderImpl
             logger.info("Disconnected.");
 
             connection.unregisterIQRequestHandler(jingleOpSet);
-            connection.unregisterIQRequestHandler(jibriIqHandler);
             connection.removeConnectionListener(connListener);
         }
 
@@ -339,16 +337,29 @@ public class XmppProviderImpl
         return DiscoveryUtil.discoverParticipantFeatures(this, jid);
     }
 
+    @Nullable
     @Override
-    public void addJibriIqHandler(@NotNull JibriSessionIqHandler jibriIqHandler)
+    public DiscoverInfo discoverInfo(@NotNull Jid jid)
     {
-        this.jibriIqHandler.addJibri(jibriIqHandler);
-    }
+        ServiceDiscoveryManager discoveryManager = ServiceDiscoveryManager.getInstanceFor(getXmppConnection());
+        if (discoveryManager == null)
+        {
+            logger.info("Can not discover info, no ServiceDiscoveryManager");
+            return null;
+        }
 
-    @Override
-    public void removeJibriIqHandler(@NotNull JibriSessionIqHandler jibriIqHandler)
-    {
-        this.jibriIqHandler.removeJibri(jibriIqHandler);
+        try
+        {
+            return discoveryManager.discoverInfo(jid);
+        }
+        catch (XMPPException.XMPPErrorException |
+                SmackException.NotConnectedException |
+                SmackException.NoResponseException |
+                InterruptedException e)
+        {
+            logger.warn("Failed to discover info", e);
+            return null;
+        }
     }
 
     class XmppConnectionListener
@@ -457,7 +468,7 @@ public class XmppProviderImpl
 
                 ChatRoomImpl newRoom = new ChatRoomImpl(XmppProviderImpl.this, roomJid, this::removeRoom);
 
-                rooms.put(newRoom.getName(), newRoom);
+                rooms.put(newRoom.getRoomJid().toString(), newRoom);
 
                 return newRoom;
             }
@@ -490,7 +501,7 @@ public class XmppProviderImpl
         {
             synchronized (rooms)
             {
-                rooms.remove(chatRoom.getName());
+                rooms.remove(chatRoom.getRoomJid().toString());
             }
         }
     }

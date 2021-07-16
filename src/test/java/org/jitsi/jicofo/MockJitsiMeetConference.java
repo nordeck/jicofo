@@ -17,9 +17,13 @@
  */
 package org.jitsi.jicofo;
 
+import org.jetbrains.annotations.*;
 import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.jicofo.bridge.*;
+import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.jicofo.xmpp.muc.*;
+import org.jitsi.utils.*;
+import org.jitsi.xmpp.extensions.jibri.*;
 import org.jxmpp.jid.*;
 
 import java.util.*;
@@ -60,11 +64,6 @@ public class MockJitsiMeetConference
     }
 
     @Override
-    public void setStartMuted(boolean[] startMuted)
-    {
-    }
-
-    @Override
     public MemberRole getRoleForMucJid(Jid jid)
     {
         return null;
@@ -84,4 +83,27 @@ public class MockJitsiMeetConference
     {
         return true;
     }
+
+    @Override
+    public IqProcessingResult handleJibriRequest(@NotNull IqRequest<JibriIq> request)
+    {
+        return new IqProcessingResult.NotProcessed();
+    }
+
+    @Override
+    public boolean acceptJigasiRequest(@NotNull Jid from)
+    {
+        return MemberRoleKt.hasModeratorRights(getRoleForMucJid(from));
+    }
+
+    @Override
+    public @NotNull JitsiMeetConferenceImpl.MuteResult
+    handleMuteRequest(Jid muterJid, Jid toBeMutedJid, boolean doMute, MediaType mediaType)
+    {
+        return JitsiMeetConferenceImpl.MuteResult.SUCCESS;
+    }
+
+    @Override
+    public void muteAllNonModeratorParticipants(MediaType mediaType)
+    {}
 }
