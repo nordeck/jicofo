@@ -37,7 +37,6 @@ import org.jitsi.xmpp.extensions.jibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 
 import org.jitsi.xmpp.extensions.jitsimeet.*;
-import org.jitsi.jicofo.jigasi.*;
 import org.jitsi.jicofo.jibri.*;
 
 import org.jitsi.xmpp.extensions.visitors.*;
@@ -72,6 +71,12 @@ import static org.jitsi.jicofo.xmpp.IqProcessingResult.*;
 public class JitsiMeetConferenceImpl
     implements JitsiMeetConference, XmppProvider.Listener
 {
+
+    /**
+     * Status used by participants when they are switching from a room to a breakout room.
+     */
+    private static final String BREAKOUT_SWITCHING_STATUS = "switch_room";
+
     /**
      * Name of MUC room that is hosting Jitsi Meet conference.
      */
@@ -150,12 +155,6 @@ public class JitsiMeetConferenceImpl
      */
     private JibriSipGateway jibriSipGateway;
 
-    /**
-     * The {@link TranscriberManager} who listens for participants requesting
-     * transcription and, when necessary, dialing the transcriber instance.
-     */
-    private TranscriberManager transcriberManager;
-
     private ChatRoomRoleManager chatRoomRoleManager;
 
     /**
@@ -170,7 +169,9 @@ public class JitsiMeetConferenceImpl
     private Future<?> singleParticipantTout;
 
     /**
-     * A task to stop the conference if no participants join after an initial timeout.
+     * A task to stop the conference if no participants or breakout rooms are present after a timeout.
+     * It's triggered when the conference is first created, or when the last participant leaves with an indication
+     * that it will join a breakout room.
      */
     private Future<?> conferenceStartTimeout;
 
@@ -282,18 +283,7 @@ public class JitsiMeetConferenceImpl
         this.jicofoServices = jicofoServices;
         this.jvbVersion = jvbVersion;
 
-        conferenceStartTimeout = TaskPools.getScheduledPool().schedule(
-                () ->
-                {
-                    if (includeInStatistics)
-                    {
-                        logger.info("Expiring due to initial timeout.");
-                    }
-                    stop();
-                },
-                ConferenceConfig.config.getConferenceStartTimeout().toMillis(),
-                TimeUnit.MILLISECONDS);
-
+        rescheduleConferenceStartTimeout();
 
         visitorCodecs = new PreferenceAggregator(
             logger,
@@ -320,6 +310,13 @@ public class JitsiMeetConferenceImpl
     public EntityBareJid getMainRoomJid()
     {
         return mainRoomJid;
+    }
+
+    @Override
+    public List<EntityBareJid> getVisitorRoomsJids()
+    {
+        return this.visitorChatRooms.values().stream().map(ChatRoom::getRoomJid)
+            .collect(Collectors.toList());
     }
 
     /**
@@ -502,15 +499,6 @@ public class JitsiMeetConferenceImpl
         this.chatRoom = chatRoom;
         chatRoom.addListener(chatRoomListener);
 
-        transcriberManager = new TranscriberManager(
-            jicofoServices.getXmppServices().getXmppConnectionByName(
-                JigasiConfig.config.xmppConnectionName()
-            ),
-            this,
-            chatRoom,
-            jicofoServices.getXmppServices().getJigasiDetector(),
-            logger);
-
         ChatRoomInfo chatRoomInfo = chatRoom.join();
         if (chatRoomInfo.getMeetingId() == null)
         {
@@ -651,23 +639,32 @@ public class JitsiMeetConferenceImpl
             chatRoom.removeListener(chatRoomRoleManager);
             chatRoomRoleManager.stop();
         }
-        if (transcriberManager != null)
+
+        // first disconnect vnodes before leaving
+        final List<ExtensionElement> disconnectVnodeExtensions;
+        final List<ChatRoom> visitorChatRoomsToLeave;
+        synchronized (visitorChatRooms)
         {
-            transcriberManager.dispose();
-            transcriberManager = null;
+            disconnectVnodeExtensions = visitorChatRooms.keySet().stream()
+                    .map(DisconnectVnodePacketExtension::new).collect(Collectors.toList());
+            visitorChatRoomsToLeave = new ArrayList<>(visitorChatRooms.values());
+            visitorChatRooms.clear();
         }
 
-        chatRoom.leave();
-
+        final ChatRoom chatRoomToLeave = chatRoom;
         chatRoom.removeListener(chatRoomListener);
         chatRoom = null;
 
-        List<ExtensionElement> disconnectVnodeExtensions = new ArrayList<>();
-        synchronized (visitorChatRooms)
+        TaskPools.getIoPool().submit(() ->
         {
-            visitorChatRooms.forEach((vnode, visitorChatRoom) ->
+            if (!disconnectVnodeExtensions.isEmpty())
             {
-                disconnectVnodeExtensions.add(new DisconnectVnodePacketExtension(vnode));
+                jicofoServices.getXmppServices().getVisitorsManager()
+                        .sendIqToComponentAndGetResponse(roomName, disconnectVnodeExtensions);
+            }
+
+            visitorChatRoomsToLeave.forEach(visitorChatRoom ->
+            {
                 try
                 {
                     visitorChatRoom.removeAllListeners();
@@ -678,14 +675,9 @@ public class JitsiMeetConferenceImpl
                     logger.error("Failed to leave visitor room", e);
                 }
             });
-            visitorChatRooms.clear();
-        }
 
-        if (!disconnectVnodeExtensions.isEmpty())
-        {
-            jicofoServices.getXmppServices().getVisitorsManager()
-                    .sendIqToComponent(roomName, disconnectVnodeExtensions);
-        }
+            chatRoomToLeave.leave();
+        });
     }
 
     /**
@@ -984,13 +976,14 @@ public class JitsiMeetConferenceImpl
             }
         }
 
-        maybeStop();
+        maybeStop(chatRoomMember);
     }
 
     /**
      * Stop the conference if there are no members and there are no associated breakout room.
+     * @param chatRoomMember The participant leaving if any.
      */
-    private void maybeStop()
+    private void maybeStop(ChatRoomMember chatRoomMember)
     {
         ChatRoom chatRoom = this.chatRoom;
         if (chatRoom == null || chatRoom.getMemberCount() == 0)
@@ -998,6 +991,13 @@ public class JitsiMeetConferenceImpl
             if (jicofoServices.getFocusManager().hasBreakoutRooms(roomName))
             {
                 logger.info("Breakout rooms still present, will not stop.");
+            }
+            else if (chatRoomMember != null
+                    && chatRoomMember.getPresence() != null
+                    && BREAKOUT_SWITCHING_STATUS.equals(chatRoomMember.getPresence().getStatus()))
+            {
+                logger.info("Member moving to breakout room, will not stop.");
+                rescheduleConferenceStartTimeout();
             }
             else
             {
@@ -1012,7 +1012,7 @@ public class JitsiMeetConferenceImpl
      */
     public void breakoutConferenceEnded()
     {
-        maybeStop();
+        maybeStop(null);
     }
 
     @Override
@@ -1545,7 +1545,6 @@ public class JitsiMeetConferenceImpl
         o.put("participants", participantsJson);
         //o.put("jibri_recorder", jibriRecorder.getDebugState());
         //o.put("jibri_sip_gateway", jibriSipGateway.getDebugState());
-        //o.put("transcriber_manager", transcriberManager.getDebugState());
         ChatRoomRoleManager chatRoomRoleManager = this.chatRoomRoleManager;
         o.put("chat_room_role_manager", chatRoomRoleManager == null ? "null" : chatRoomRoleManager.getDebugState());
         o.put("started", started.get());
@@ -2086,6 +2085,32 @@ public class JitsiMeetConferenceImpl
         logger.info("Scheduled single person timeout.");
     }
 
+    /**
+     * (Re)schedules conference start timeout.
+     */
+    private void rescheduleConferenceStartTimeout()
+    {
+        conferenceStartTimeout = TaskPools.getScheduledPool().schedule(
+                () ->
+                {
+                    if (includeInStatistics)
+                    {
+                        logger.info("Expiring due to initial timeout.");
+                    }
+
+                    // in case of last participant leaving to join a breakout room, we want to skip destroy
+                    if (jicofoServices.getFocusManager().hasBreakoutRooms(roomName))
+                    {
+                        logger.info("Breakout rooms present, will not stop.");
+                        return;
+                    }
+
+                    stop();
+                },
+                ConferenceConfig.config.getConferenceStartTimeout().toMillis(),
+                TimeUnit.MILLISECONDS);
+    }
+
     /** Called when a new visitor has been added to the conference. */
     private void visitorAdded(List<String> codecs)
     {
@@ -2159,7 +2184,12 @@ public class JitsiMeetConferenceImpl
     @Override
     public boolean acceptJigasiRequest(@NotNull Jid from)
     {
-        return MemberRoleKt.hasModeratorRights(getRoleForMucJid(from));
+        if (ConferenceConfig.config.getEnableModeratorChecks())
+        {
+            return MemberRoleKt.hasModeratorRights(getRoleForMucJid(from));
+        }
+
+        return true;
     }
 
     @Override
@@ -2351,6 +2381,7 @@ public class JitsiMeetConferenceImpl
             if (member.getRole() != MemberRole.VISITOR)
             {
                 logger.debug("Member kicked for non-visitor member of visitor room: " + member);
+                return;
             }
             onMemberKicked(member);
         }
@@ -2361,6 +2392,7 @@ public class JitsiMeetConferenceImpl
             if (member.getRole() != MemberRole.VISITOR)
             {
                 logger.debug("Member left for non-visitor member of visitor room: " + member);
+                return;
             }
             onMemberLeft(member);
         }
@@ -2415,11 +2447,6 @@ public class JitsiMeetConferenceImpl
 
         @Override
         public void memberPresenceChanged(@NotNull ChatRoomMember member)
-        {
-        }
-
-        @Override
-        public void transcriptionRequestedChanged(boolean transcriptionRequested)
         {
         }
 
