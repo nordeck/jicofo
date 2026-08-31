@@ -20,6 +20,7 @@ package org.jitsi.jicofo.xmpp.muc
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import org.jitsi.jicofo.xmpp.FeatureDiscoveryResult
 import org.jitsi.jicofo.xmpp.Features
 import org.jitsi.jicofo.xmpp.XmppCapsStats
 import org.jitsi.jicofo.xmpp.XmppConfig
@@ -249,15 +250,21 @@ class ChatRoomMemberImpl(
 
     override fun toString() = "ChatMember[id=$name role=$role]"
 
-    override val features: Set<Features> by lazy {
-        val features = chatRoom.xmppProvider.discoverFeatures(occupantJid)
+    private val featureDiscoveryResult: FeatureDiscoveryResult by lazy {
+        val result = chatRoom.xmppProvider.discoverFeatures(occupantJid)
         // Update the stats once when the features are discovered.
         capsNodeVer?.let {
-            XmppCapsStats.update(it, features)
+            XmppCapsStats.update(it, result.features)
         } ?: logger.error("No caps nodeVer found")
 
-        features
+        result
     }
+
+    override val features: Set<Features>
+        get() = featureDiscoveryResult.features
+
+    override val featuresDiscovered: Boolean
+        get() = featureDiscoveryResult.discovered
 
     override val debugState: ObjectNode
         get() = JsonNodeFactory.instance.objectNode().apply {
@@ -277,6 +284,7 @@ class ChatRoomMemberImpl(
             put("is_video_muted", isVideoMuted)
             put("diarize", diarize)
             set<ObjectNode>("features", jsonMapper.valueToTree(features.map { it.name }))
+            put("features_discovered", featuresDiscovered)
             put("capsNodeVer", capsNodeVer.toString())
         }
 }

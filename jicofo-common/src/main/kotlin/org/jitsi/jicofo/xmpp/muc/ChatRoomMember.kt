@@ -77,5 +77,11 @@ interface ChatRoomMember {
      */
     val features: Set<Features>
 
+    /**
+     * Whether [features] were actually discovered. When this is false [features] is just an assumed default set, and
+     * the absence of a feature from it does not mean that the member does not support the feature.
+     */
+    val featuresDiscovered: Boolean
+
     val debugState: ObjectNode
 }
