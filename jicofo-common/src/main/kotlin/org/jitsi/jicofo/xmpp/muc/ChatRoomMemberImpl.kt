@@ -72,6 +72,8 @@ class ChatRoomMemberImpl(
     override var statsId: String? = null
         private set
     override var diarize: Boolean = false
+
+    override var translationLanguage: String? = null
         private set
     override var videoCodecs: List<String>? = null
         private set
@@ -215,6 +217,8 @@ class ChatRoomMemberImpl(
         val diarizeElement = presence.getExtensionElement("jitsi_participant_diarize", "jabber:client")
         diarize = (diarizeElement as? StandardExtensionElement)?.text?.toBoolean() ?: false
 
+        translationLanguage = parseTranslationLanguage(presence)
+
         val newVideoCodecs =
             presence.getExtension(JitsiParticipantCodecList::class.java)?.let {
                 if (!it.codecs.contains("vp8")) {
@@ -250,6 +254,36 @@ class ChatRoomMemberImpl(
 
     override fun toString() = "ChatMember[id=$name role=$role]"
 
+    companion object {
+        /**
+         * The shape of a language code, as jitsi-meet sends them (the keys of its
+         * lang/translation-languages.json): a 2- or 3-letter primary subtag with optional region or script subtags,
+         * for example "fr", "ceb" or "zh-CN".
+         */
+        private val LANGUAGE_CODE_REGEX = Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*")
+
+        /**
+         * The language a member wants transcriptions translated into, or null when it wants none. A blank value means
+         * the same as an absent one.
+         *
+         * The value is set by the participant, so it is validated rather than trusted. It ends up in a colibri2
+         * attribute, in the bridge's log lines, and (later) in a request to a translation provider. Smack escapes the
+         * attribute and Jackson escapes the JSON, so this is not about breaking out of the XML or the JSON. It keeps
+         * junk and control characters out of the signalling, and it bounds the length.
+         */
+        private fun parseTranslationLanguage(presence: Presence): String? {
+            val language = presence
+                .getExtensionElement("jitsi_participant_translation_language", "jabber:client")
+                .let { (it as? StandardExtensionElement)?.text }
+                ?.trim()
+                ?: return null
+            if (language.isEmpty()) {
+                return null
+            }
+            return language.takeIf { LANGUAGE_CODE_REGEX.matches(it) }
+        }
+    }
+
     private val featureDiscoveryResult: FeatureDiscoveryResult by lazy {
         val result = chatRoom.xmppProvider.discoverFeatures(occupantJid)
         // Update the stats once when the features are discovered.
@@ -283,6 +317,7 @@ class ChatRoomMemberImpl(
             put("is_audio_muted", isAudioMuted)
             put("is_video_muted", isVideoMuted)
             put("diarize", diarize)
+            put("translation_language", translationLanguage)
             set<ObjectNode>("features", jsonMapper.valueToTree(features.map { it.name }))
             put("features_discovered", featuresDiscovered)
             put("capsNodeVer", capsNodeVer.toString())
